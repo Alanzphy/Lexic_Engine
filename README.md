@@ -109,7 +109,7 @@ Esto nos confirma que el enfoque funciona
 
 ## Ejecucion
 
-Comandos de prueba:
+Comandos de prueba de la version Python secuencial:
 
 ```bash
 python3 motordelexico.py --spec lexical_spec.sexp --language erlang --input example.erl --output tokens_erlang.txt
@@ -117,10 +117,79 @@ python3 motordelexico.py --spec lexical_spec.sexp --language go --input example.
 python3 motordelexico.py --spec lexical_spec.sexp --language cpp --input example.cpp --output tokens_cpp.txt
 ```
 
+La version Python tambien acepta multiples archivos de forma secuencial:
+
+```bash
+python3 motordelexico.py --spec lexical_spec.sexp --language auto \
+  --input example.go --input example.cpp --input example.erl \
+  --output tokens_mixtos_python.txt
+```
+
+## 7. Nueva version en Go con concurrencia
+
+Implementacion en Go:
+- `motordelexico.go`
+
+La aplicacion en Go:
+- lee la misma especificacion `lexical_spec.sexp`,
+- compila las expresiones-s a regex nativas de Go (`regexp`),
+- procesa multiples archivos con goroutines,
+- envia cada resultado por un channel,
+- evita race conditions dejando que solo la goroutine principal agregue y escriba resultados.
+
+> Nota: como el repositorio contiene archivos C++ de ejemplo en la raiz, se recomienda ejecutar Go por archivo (`go run motordelexico.go`) en vez de `go run .`.
+
+Comandos de prueba:
+
+```bash
+go run motordelexico.go --spec lexical_spec.sexp --language go --input example.go --output tokens_go_from_go.txt
+
+go run motordelexico.go --spec lexical_spec.sexp --language auto \
+  --input example.go --input example.cpp --input example.erl \
+  --output tokens_mixtos_go.txt
+```
+
+Tambien puede escribirse un archivo por fuente:
+
+```bash
+go run motordelexico.go --spec lexical_spec.sexp --language auto \
+  --input example.go --input example.cpp --input example.erl \
+  --output-dir out_tokens
+```
+
+Pruebas:
+
+```bash
+go test motordelexico.go motordelexico_test.go
+go test -race motordelexico.go motordelexico_test.go
+python3 -c "import ast, pathlib; ast.parse(pathlib.Path('motordelexico.py').read_text(encoding='utf-8'))"
+```
+
+### Medicion de tiempos
+
+Para no incluir tiempo de compilacion en Go:
+
+```bash
+go build -o /tmp/motordelexico-go motordelexico.go
+```
+
+Benchmark usado: dos pasadas sobre `big_example.go`, escribiendo salida combinada.
+
+| Version | Corrida 1 | Corrida 2 | Corrida 3 | Promedio |
+| --- | ---: | ---: | ---: | ---: |
+| Python secuencial | 15.52s | 15.47s | 15.72s | 15.57s |
+| Go concurrente | 0.66s | 0.53s | 0.50s | 0.56s |
+
+La salida generada por ambas versiones fue comparada con `diff` y no presento diferencias.
+
 Archivos de salida generados:
 - `tokens_erlang.txt`
 - `tokens_go.txt`
 - `tokens_cpp.txt`
+- opcionalmente, salidas multiarchivo generadas con `--output` o `--output-dir`
+
+Reporte breve:
+- `reporte_concurrencia.md`
 
 ## Referencias
 

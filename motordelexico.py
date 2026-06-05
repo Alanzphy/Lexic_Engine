@@ -9,6 +9,19 @@ from typing import Dict, Iterable, List, Sequence, Set, Tuple
 
 RegexNode = Tuple
 TokenDef = Tuple[str, RegexNode, bool]  # (nombre, patron, skip)
+LANGUAGE_BY_EXTENSION = {
+    ".erl": "erlang",
+    ".hrl": "erlang",
+    ".go": "go",
+    ".c": "cpp",
+    ".cc": "cpp",
+    ".cpp": "cpp",
+    ".cxx": "cpp",
+    ".h": "cpp",
+    ".hh": "cpp",
+    ".hpp": "cpp",
+    ".hxx": "cpp",
+}
 
 
 class SexpParser:
@@ -364,32 +377,70 @@ def scan_text(text: str, token_defs: Sequence[TokenDef]) -> List[Tuple[str, str,
     return tokens
 
 
+def format_tokens(tokens: Sequence[Tuple[str, str, int, int]]) -> str:
+    return "\n".join(f"{ttype:<14} | L{ln:>3}:C{col:<3} | {lex!r}" for ttype, lex, ln, col in tokens)
+
+
+def resolve_language(requested: str, src_path: Path, spec: LexerSpec) -> str:
+    if requested != "auto":
+        return requested
+
+    language = LANGUAGE_BY_EXTENSION.get(src_path.suffix.lower())
+    if language is None or language not in spec.languages:
+        raise ValueError(f"No se pudo detectar el lenguaje de: {src_path}")
+    return language
+
+
+def output_path_for(output_dir: Path, src_path: Path) -> Path:
+    return output_dir / f"{src_path.stem}_tokens.txt"
+
+
 def cli() -> int:
     parser = argparse.ArgumentParser(description="Motor regex + scanner lexico desde especificacion s-exp")
     parser.add_argument("--spec", required=True, help="Ruta al archivo de especificacion .sexp")
-    parser.add_argument("--language", required=True, choices=["erlang", "go", "cpp"], help="Lenguaje a escanear")
-    parser.add_argument("--input", required=True, help="Archivo fuente a tokenizar")
-    parser.add_argument("--output", help="Archivo de salida opcional")
+    parser.add_argument("--language", required=True, choices=["erlang", "go", "cpp", "auto"], help="Lenguaje a escanear")
+    parser.add_argument("--input", required=True, action="append", help="Archivo fuente a tokenizar; puede repetirse")
+    parser.add_argument("--output", help="Archivo de salida opcional; con varios inputs escribe una salida combinada")
+    parser.add_argument("--output-dir", help="Directorio opcional para escribir un archivo de tokens por input")
 
     args = parser.parse_args()
 
     spec_path = Path(args.spec)
-    src_path = Path(args.input)
-
     spec = parse_spec(spec_path.read_text(encoding="utf-8"))
-    if args.language not in spec.languages:
+    if args.language != "auto" and args.language not in spec.languages:
         raise ValueError(f"Lenguaje no definido en spec: {args.language}")
 
-    text = src_path.read_text(encoding="utf-8")
-    token_defs = spec.languages[args.language]
-    tokens = scan_text(text, token_defs)
+    if args.output and args.output_dir:
+        parser.error("--output y --output-dir no se pueden usar al mismo tiempo")
 
-    lines = [f"{ttype:<14} | L{ln:>3}:C{col:<3} | {lex!r}" for ttype, lex, ln, col in tokens]
-    out = "\n".join(lines)
+    input_paths = [Path(item) for item in args.input]
+    output_dir = Path(args.output_dir) if args.output_dir else None
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-    if args.output:
+    rendered_outputs: List[str] = []
+
+    for src_path in input_paths:
+        language = resolve_language(args.language, src_path, spec)
+        text = src_path.read_text(encoding="utf-8")
+        token_defs = spec.languages[language]
+        tokens = scan_text(text, token_defs)
+        rendered = format_tokens(tokens)
+
+        if output_dir is not None:
+            output_path_for(output_dir, src_path).write_text(rendered + "\n", encoding="utf-8")
+            continue
+
+        if len(input_paths) > 1:
+            rendered_outputs.append(f"== {src_path} ({language}) ==\n{rendered}")
+        else:
+            rendered_outputs.append(rendered)
+
+    out = "\n\n".join(rendered_outputs)
+
+    if args.output and output_dir is None:
         Path(args.output).write_text(out + "\n", encoding="utf-8")
-    else:
+    elif output_dir is None:
         print(out)
 
     return 0

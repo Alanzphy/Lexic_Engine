@@ -1,0 +1,19 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# Go build/test artifacts
+/motordelexico
+/motordelexico-go
+*.test
+coverage.out
+
+# Generated lexer outputs
+tokens_big_*.txt
+tokens_mixtos_*.txt
+tokens_go_from_go.txt
+tokens_mixtos_python.txt
+out_tokens/
